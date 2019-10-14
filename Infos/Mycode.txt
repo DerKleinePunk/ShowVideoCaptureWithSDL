@@ -1,0 +1,322 @@
+#include <iostream>
+#include <SDL2/SDL.h>
+#include <linux/videodev2.h>
+#include <libv4l2.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+bool InitEverything();
+bool InitSDL();
+bool CreateWindow();
+void SetupRenderer();
+bool CreateRenderer();
+void RunGame();
+void HandleInput();
+void Render();
+
+SDL_Rect windowRect = { 900, 300, 300, 400 };
+
+SDL_Window* window;
+SDL_Renderer* renderer;
+bool quit = false;
+
+uint8_t *buffer;
+
+static int xioctl(int fd, int request, void *arg)
+{
+    int r;
+
+
+    do {
+        r = v4l2_ioctl(fd, request, arg);
+    } while (r == -1 && ((errno == EINTR) || (errno == EAGAIN)));
+
+    if (r == -1) {
+        fprintf(stderr, "error %d, %s\\n", errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    return r;
+}
+
+static void errno_exit(const char *s) {
+  fprintf (stderr, "%s error %d, %s\n", s, errno, strerror (errno));
+
+  exit (EXIT_FAILURE);
+}
+
+int main(int, char**) {
+    std::cout << "Hello, world!\n";
+    auto result = -1;
+
+    if ( !InitEverything() )
+		return -1;
+
+    const char *dev_name = "/dev/video0";
+
+    //Open Video Device
+    int fd;
+    if((fd = open(dev_name, O_RDWR| O_NONBLOCK)) < 0){
+        std::cout << "failed open Video Device\n";
+        exit(1);
+    }
+
+    std::cout << "video device open\n";
+    
+    struct v4l2_capability cap;
+
+    if (-1 == xioctl (fd, VIDIOC_QUERYCAP, &cap)) {
+        if (EINVAL == errno) {
+            fprintf (stderr, "%s is no V4L2 device\n", dev_name);
+            exit (EXIT_FAILURE);
+        } else {
+            errno_exit ("VIDIOC_QUERYCAP");
+        }
+    }
+
+    if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+        fprintf (stderr, "%s is no video capture device\n", dev_name);
+        exit (EXIT_FAILURE);
+    }
+
+    if (!(cap.capabilities & V4L2_CAP_READWRITE)) {
+        fprintf (stderr, "%s does not support read i/o\n", dev_name);
+        //exit (EXIT_FAILURE);
+    }
+    
+
+    struct v4l2_format format;
+    format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    format.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+    format.fmt.pix.width = 320;
+    format.fmt.pix.height = 240;
+    //fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB24;
+    //fmt.fmt.pix.field       = V4L2_FIELD_INTERLACED;
+    
+    if(xioctl(fd, VIDIOC_S_FMT, &format) < 0){
+        perror("VIDIOC_S_FMT");
+        exit(1);
+    }
+
+    std::cout << "format set\n";
+
+    struct v4l2_requestbuffers req = {0};
+    req.count = 1;
+    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    req.memory = V4L2_MEMORY_MMAP;
+
+    if (-1 == xioctl(fd, VIDIOC_REQBUFS, &req))
+    {
+        perror("Requesting Buffer");
+        return 1;
+    }
+
+    std::cout << "buffer request ok\n";
+
+    struct v4l2_buffer bufferinfo;
+    memset(&bufferinfo, 0, sizeof(bufferinfo));
+    
+    bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    bufferinfo.memory = V4L2_MEMORY_MMAP;
+    bufferinfo.index = 0;
+    
+    if(xioctl(fd, VIDIOC_QUERYBUF, &bufferinfo) < 0){
+        perror("VIDIOC_QUERYBUF");
+        exit(1);
+    }
+
+    buffer = (uint8_t*) v4l2_mmap(NULL, bufferinfo.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, bufferinfo.m.offset);
+    printf("Length: %d\nAddress: %p\n", bufferinfo.length, buffer);
+    printf("Image Length: %d\n", bufferinfo.bytesused);
+
+    if(buffer == MAP_FAILED) {
+        perror("mmap");
+        exit(1);
+    }
+ 
+    memset(buffer, 0, bufferinfo.length);
+
+    memset(&bufferinfo, 0, sizeof(bufferinfo));
+
+    bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    bufferinfo.memory = V4L2_MEMORY_MMAP;
+    bufferinfo.index = 0;
+
+    if(xioctl(fd, VIDIOC_QBUF, &bufferinfo) < 0)
+    {
+        perror("Query Buffer");
+        return 1;
+    }
+
+    int type = bufferinfo.type;
+    if(xioctl(fd, VIDIOC_STREAMON, &type) < 0){
+        perror("VIDIOC_STREAMON");
+        exit(1);
+    }
+
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(fd, &fds);
+    struct timeval tv = {0};
+    tv.tv_sec = 2;
+    int r = select(fd+1, &fds, NULL, NULL, &tv);
+    if(-1 == r) {
+        std::cout << "Waiting for Frame" << std::endl;
+        return 1;
+    }
+
+    bufferinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    bufferinfo.memory = V4L2_MEMORY_MMAP;
+    result = ioctl(fd, VIDIOC_DQBUF, &bufferinfo);
+    if(result == -1) {
+        std::cout << "Retrieving Frame Error " << std::to_string(errno) << " " << strerror(errno) << std::endl;
+        return 1;
+    }
+
+    std::cout << "Retrieving Frame Done" << std::endl;
+
+    //RunGame();
+
+    // Deactivate streaming
+    if(ioctl(fd, VIDIOC_STREAMOFF, &type) < 0){
+        perror("VIDIOC_STREAMOFF");
+        exit(1);
+    }
+
+    close(fd);
+}
+
+
+// Initialization ++
+// ==================================================================
+bool InitEverything()
+{
+	if ( !InitSDL() )
+		return false;
+
+	if ( !CreateWindow() )
+		return false;
+
+	if ( !CreateRenderer() )
+		return false;
+
+	SetupRenderer();
+
+	return true;
+}
+
+bool InitSDL()
+{
+	if ( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
+	{
+		std::cout << " Failed to initialize SDL : " << SDL_GetError() << std::endl;
+		return false;
+	}
+
+	return true;
+}
+
+bool CreateWindow()
+{
+	//window = SDL_CreateWindow( "Server", posX, posY, sizeX, sizeY, 0 );
+	window = SDL_CreateWindow( "Server", windowRect.x, windowRect.y, windowRect.w, windowRect.h, 0 );
+
+	if ( window == nullptr )
+	{
+		std::cout << "Failed to create window : " << SDL_GetError();
+		return false;
+	}
+
+	return true;
+}
+
+bool CreateRenderer()
+{
+	renderer = SDL_CreateRenderer( window, -1, 0 );
+
+	if ( renderer == nullptr )
+	{
+		std::cout << "Failed to create renderer : " << SDL_GetError();
+		return false;
+	}
+
+	return true;
+}
+
+void SetupRenderer()
+{
+	// Set size of renderer to the same as window
+	SDL_RenderSetLogicalSize( renderer, windowRect.w, windowRect.h );
+
+	// Set color of renderer to red
+	SDL_SetRenderDrawColor( renderer, 255, 0, 0, 255 );
+}
+
+/*
+void RunGame()
+{
+	while ( !quit )
+	{
+		HandleInput();
+		//UpdateObjects( GetDelta() );
+
+		Render();
+	}
+}
+
+void HandleInput()
+{
+	SDL_Event event;
+	while ( SDL_PollEvent( &event ) )
+	{
+		if ( event.type == SDL_QUIT )
+			quit = true;
+		else if ( event.type == SDL_KEYDOWN )
+		{
+			switch ( event.key.keysym.sym )
+			{
+				case SDLK_RIGHT:
+					//player.MoveRight( );
+					break;
+				case SDLK_LEFT:
+					//player.MoveLeft( );
+					break;
+				case SDLK_DOWN:
+					//player.MoveDown( );
+					break;
+				case SDLK_UP:
+					//player.MoveUp( );
+					break;
+				default :
+					break;
+			}
+		}
+	}
+}
+
+void Render()
+{
+	// Clear the window and make it all red
+	SDL_RenderClear( renderer );
+
+	/*background.Render( renderer );
+
+	for (  auto &p : enemies )
+		p.Render( renderer );
+
+	topBar.Render( renderer );
+	bottomBar.Render( renderer );
+	player.Render( renderer );
+
+	// Render the changes above
+	SDL_RenderPresent( renderer);
+}
+*/

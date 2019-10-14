@@ -1,0 +1,185 @@
+# get some depens
+
+MESSAGE(STATUS "Try get and build sdl2 ${SDL2_VER}")
+
+# SDL library
+ExternalProject_Add(sdl2_project
+    URL http://www.libsdl.org/release/SDL2-${SDL2_VER}.tar.gz
+    URL_HASH SHA256=442038cf55965969f2ff06d976031813de643af9c9edc9e331bd761c242e8785
+    CMAKE_ARGS "${CMAKE_ARGS}"
+    PREFIX ${LIBS_DIR}/SDL2
+    INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(sdl2_project SOURCE_DIR)
+ExternalProject_Get_Property(sdl2_project BINARY_DIR)
+
+SET(SDL2_SRC ${SOURCE_DIR})
+SET(SDL2_BIN ${BINARY_DIR})
+SET(SDL2_INCLUDE_DIRS ${SDL2_SRC}/include)
+# SET(SDL2_LIBRARIES ${SDL2_BIN}/libSDL2.a) //static link
+SET(SDL2_LIBRARIES "-L${SDL2_BIN} -lSDL2 -ldl -pthread")
+
+# SDL_ttf
+ExternalProject_Add(sdl2_ttf_project
+    URL https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-${SDL2_TTF_VER}.tar.gz
+    DEPENDS sdl2_project
+    PREFIX ${LIBS_DIR}/SDL2_ttf
+    CONFIGURE_COMMAND LDFLAGS=-L${SDL2_BIN} CFLAGS=-I${SDL2_SRC}/include SDL2_CONFIG=${SDL2_BIN}/sdl2-config <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --enable-shared=no --host=armv7-rpi2-linux-gnueabihf --with-sysroot=${CMAKE_FIND_ROOT_PATH}
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(sdl2_ttf_project SOURCE_DIR)
+ExternalProject_Get_Property(sdl2_ttf_project BINARY_DIR)
+
+SET(SDL2_TTF_SRC ${SOURCE_DIR})
+SET(SDL2_TTF_BIN ${BINARY_DIR})
+SET(SDL2_TTF_INCLUDE_DIRS ${SDL2_TTF_SRC}/include)
+# SET(SDL2_LIBRARIES ${SDL2_BIN}/libSDL2.a) //static link
+# SET(SDL2_LIBRARIES "-L${SDL2_BIN} -lSDL2 -ldl -pthread")
+
+#sdl2_image
+ExternalProject_Add(sdl2_image_project
+    URL https://www.libsdl.org/projects/SDL_image/release/SDL2_image-${SDL2_IMAGE_VER}.tar.gz
+    DEPENDS sdl2_project
+    PREFIX ${LIBS_DIR}/SDL2_image
+    CONFIGURE_COMMAND LDFLAGS=-L${SDL2_BIN} CFLAGS=-I${SDL2_SRC}/include SDL2_CONFIG=${SDL2_BIN}/sdl2-config <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --enable-shared=no
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+)
+
+ExternalProject_Get_Property(sdl2_image_project SOURCE_DIR)
+ExternalProject_Get_Property(sdl2_image_project BINARY_DIR)
+
+SET(SDL2_IMAGE_SRC ${SOURCE_DIR})
+SET(SDL2_IMAGE_BIN ${BINARY_DIR})
+SET(SDL2_IMAGE_INCLUDE_DIRS ${SDL2_IMAGE_SRC}/include)
+
+MESSAGE(STATUS "sdl2 source is hier ${SDL2_SRC} ${SDL2_IMAGE_SRC}")
+
+
+# this only works on linux !? because build sdl2 on windows !?
+ADD_DEPENDENCIES(${project_BIN} sdl2_project)
+ADD_DEPENDENCIES(${project_BIN} sdl2_ttf_project)
+ADD_DEPENDENCIES(${project_BIN} sdl2_image_project)
+
+
+if(CMAKE_CROSSCOMPILING)
+    MESSAGE(STATUS "Try get and build sdl2 ${SDL2_VER}")
+    # SDL library
+    ExternalProject_Add(sdl2_project
+        URL http://www.libsdl.org/release/SDL2-${SDL2_VER}.tar.gz
+        URL_HASH SHA256=442038cf55965969f2ff06d976031813de643af9c9edc9e331bd761c242e8785
+        DOWNLOAD_DIR ${EXECUTABLE_OUTPUT_PATH}/download
+        PREFIX ${EXECUTABLE_OUTPUT_PATH}/sdl2
+        CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${MAINFOLDER}/cmake/Toolchain-RaspberryPi2.cmake
+                   -DOS=${OS}
+                   -DARCH=${ARCH}
+                   -DCMAKE_SYSROOT=${CMAKE_SYSROOT}
+                   -DPULSEAUDIO=OFF
+                   -DESD=OFF
+                   -DPKG_CONFIG_EXECUTABLE=${PKG_CONFIG_EXECUTABLE}
+                   -DCMAKE_VERBOSE_MAKEFILE=TRUE
+                   -DCMAKE_C_FLAGS=-I${RPIROOT}/opt/vc/include -I${RPIROOT}/usr/include -I${RPIROOT}/opt/vc/include/interface/vmcs_host/linux -ldl
+                   -DCMAKE_CXX_FLAGS=-I${RPIROOT}/opt/vc/include -I${RPIROOT}/usr/include -I${RPIROOT}/opt/vc/include/interface/vmcs_host/linux -ldl
+        #CONFIGURE_COMMAND=<SOURCE_DIR>/configure --with-sysroot=${CMAKE_SYSROOT} --disable-pulseaudio --disable-esd --disable-video-mir --disable-video-wayland
+        INSTALL_COMMAND ""
+    )
+    ExternalProject_Get_Property(sdl2_project SOURCE_DIR)
+    ExternalProject_Get_Property(sdl2_project BINARY_DIR)
+
+    SET(SDL2_SRC ${SOURCE_DIR})
+    SET(SDL2_BIN ${BINARY_DIR})
+    SET(SDL2_INCLUDE_DIRS ${SDL2_SRC}/include)
+    SET(SDL2_LIBRARIES ${SDL2_BIN}/libSDL2.a)
+ELSE()
+    FIND_PACKAGE(SDL2 REQUIRED)
+    IF(NOT SDL2_FOUND)
+        MESSAGE(FATAL_ERROR "we need sdl2")
+    ENDIF()
+ENDIF()
+
+if(CMAKE_CROSSCOMPILING)
+    ADD_DEPENDENCIES(${project_BIN} sdl2_project)
+ENDIF()
+
+# Try build ffmpeg as external project
+# Stolen from XBMC Project
+if(NOT FFMPEG_FOUND)
+    include(ExternalProject)
+    file(STRINGS ${CMAKE_SOURCE_DIR}/Externals/depends/ffmpeg/FFMPEG-VERSION VER)
+    string(REGEX MATCH "VERSION=[^ ]*$.*" FFMPEG_VER "${VER}")
+    list(GET FFMPEG_VER 0 FFMPEG_VER)
+    string(SUBSTRING "${FFMPEG_VER}" 8 -1 FFMPEG_VER)
+    string(REGEX MATCH "BASE_URL=([^ ]*)" FFMPEG_BASE_URL "${VER}")
+    list(GET FFMPEG_BASE_URL 0 FFMPEG_BASE_URL)
+    string(SUBSTRING "${FFMPEG_BASE_URL}" 9 -1 FFMPEG_BASE_URL)
+    
+    # allow user to override the download URL with a local tarball
+    # needed for offline build envs
+    if(FFMPEG_URL)
+       get_filename_component(FFMPEG_URL "${FFMPEG_URL}" ABSOLUTE)
+    else()
+        set(FFMPEG_URL ${FFMPEG_BASE_URL}/${FFMPEG_VER}.tar.gz)
+    endif()
+    
+    message(STATUS "FFMPEG_URL: ${FFMPEG_URL}")
+    message(STATUS "CPU: ${CPU}, ARCH: ${ARCH}, OS:${OS}")
+    
+    if(CMAKE_CROSSCOMPILING)
+        set(CROSS_ARGS -DDEPENDS_PATH=${DEPENDS_PATH}
+                       -DPKG_CONFIG_EXECUTABLE=${PKG_CONFIG_EXECUTABLE}
+                       -DCROSSCOMPILING=${CMAKE_CROSSCOMPILING}
+                       -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+                       -DOS=${OS}
+                       -DARCH=${ARCH}
+                       -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+                       -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                       -DCMAKE_AR=${CMAKE_AR})
+    endif()
+
+    externalproject_add(ffmpeg_project
+                      URL ${FFMPEG_URL}
+                      DOWNLOAD_NAME ffmpeg-${FFMPEG_VER}.tar.gz
+                      DOWNLOAD_DIR ${EXECUTABLE_OUTPUT_PATH}/download
+                      PREFIX ${EXECUTABLE_OUTPUT_PATH}/ffmpeg
+                      CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXECUTABLE_OUTPUT_PATH}
+                                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                                 -DCORE_SYSTEM_NAME=${CORE_SYSTEM_NAME}
+                                 -DCPU=${CPU}
+                                 -DENABLE_NEON=${ENABLE_NEON}
+                                 -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
+                                 -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
+                                 -DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS}
+                                 -DBUILDER_NAME="carnine"
+                                 -DFFMPEG_VER=${FFMPEG_VER}
+                                 ${CROSS_ARGS}
+                       PATCH_COMMAND ${CMAKE_COMMAND} -E copy
+                                     ${CMAKE_SOURCE_DIR}/Externals/depends/ffmpeg/CMakeLists.txt
+                                     <SOURCE_DIR> &&
+                                    ${CMAKE_COMMAND} -E copy
+                                    ${CMAKE_SOURCE_DIR}/Externals/depends/ffmpeg/FindGnuTls.cmake
+                                    <SOURCE_DIR>)
+    file(WRITE ${EXECUTABLE_OUTPUT_PATH}/ffmpeg/ffmpeg-link-wrapper
+"#!/bin/bash
+if [[ $@ == *${APP_NAME_LC}.bin* || $@ == *${APP_NAME_LC}.so* || $@ == *${APP_NAME_LC}-test* ]]
+then
+  avformat=\"$(PKG_CONFIG_PATH=${EXECUTABLE_OUTPUT_PATH}/lib/pkgconfig ${PKG_CONFIG_EXECUTABLE} --libs --static libavformat)\"
+  avcodec=`PKG_CONFIG_PATH=${EXECUTABLE_OUTPUT_PATH}/lib/pkgconfig ${PKG_CONFIG_EXECUTABLE} --libs --static libavcodec`
+  avfilter=`PKG_CONFIG_PATH=${EXECUTABLE_OUTPUT_PATH}/lib/pkgconfig ${PKG_CONFIG_EXECUTABLE} --libs --static libavfilter`
+  avutil=`PKG_CONFIG_PATH=${EXECUTABLE_OUTPUT_PATH}/lib/pkgconfig ${PKG_CONFIG_EXECUTABLE} --libs --static libavutil`
+  swscale=`PKG_CONFIG_PATH=${EXECUTABLE_OUTPUT_PATH}/lib/pkgconfig ${PKG_CONFIG_EXECUTABLE} --libs --static libswscale`
+  swresample=`PKG_CONFIG_PATH=${EXECUTABLE_OUTPUT_PATH}/lib/pkgconfig ${PKG_CONFIG_EXECUTABLE} --libs --static libswresample`
+  gnutls=`PKG_CONFIG_PATH=${EXECUTABLE_OUTPUT_PATH}/lib/pkgconfig/ ${PKG_CONFIG_EXECUTABLE}  --libs-only-l --static --silence-errors gnutls`
+  $@ $avformat $avcodec $avfilter $swscale $swresample -lpostproc $gnutls
+else
+  $@
+fi")
+    file(COPY ${EXECUTABLE_OUTPUT_PATH}/ffmpeg/ffmpeg-link-wrapper
+         DESTINATION ${EXECUTABLE_OUTPUT_PATH}
+         FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+    set(FFMPEG_LINK_EXECUTABLE "${EXECUTABLE_OUTPUT_PATH}/ffmpeg-link-wrapper <CMAKE_CXX_COMPILER> <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>") 
+    include_directories(${EXECUTABLE_OUTPUT_PATH}/include)
+    set(FFMPEG_FOUND TRUE)
+    set_target_properties(ffmpeg_project PROPERTIES FOLDER "External Projects")
+    set(FFMPEG_LIBRARIES -lavformat)
+endif()

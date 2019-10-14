@@ -1,0 +1,11 @@
+https://github.com/biotrump/v4l2-lib/blob/master/capture-v4l2.c
+
+http://jwhsmith.net/2014/12/capturing-a-webcam-stream-using-v4l2/
+
+https://jayrambhia.com/blog/capture-v4l2
+
+https://www.kernel.org/doc/html/v4.9/media/uapi/v4l/v4l2grab.c.html
+
+https://github.com/chendotjs/Webcam-SDL2/blob/master/src/main.c
+
+https://www.acmesystems.it/video_streaming
