@@ -31,15 +31,32 @@ SDL_Texture* imageFrame = nullptr;
 bool quit = false;
 
 uint8_t *buffer;
+CamReader* camReader = nullptr;
+bool newPixels = false;
+unsigned char* _camPixel = nullptr;
+int _camPixelSize = -1;
+SDL_mutex* _camPixelLock;
 
+void NewPixels(void* camPixel, int size) {
+        if(_camPixelSize != size) {
+                SDL_LockMutex(_camPixelLock);
+                if(_camPixel != nullptr) {
+                        delete [] _camPixel;
+                }
+                _camPixel = new unsigned char[size];
+                _camPixelSize = size;
+                SDL_UnlockMutex(_camPixelLock);
+        }
+        newPixels = true;
+}
 
 int main(int argc, char **argv)
 {
         FILE                            *fout;
-       
-
-        CamReader* camReader = new CamReader("/dev/video0");
-        auto result = camReader->Init();
+        _camPixelLock = SDL_CreateMutex();
+        //Grabber Cam Supports 720x480 NTSC
+        camReader = new CamReader("/dev/video0");
+        auto result = camReader->Init(720, 480);
         if(result < 0) {
                 exit(EXIT_FAILURE);
         }
@@ -47,8 +64,7 @@ int main(int argc, char **argv)
         camReader->GetPictureSize(windowRect.w, windowRect.h);
 
         InitEverything();
-        
-        
+                
         //Big Problem the Texture muss have the Same Vormat like Cam not so many
         //imageFrame = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 240);
         uint32_t pixelFormat = SDL_PIXELFORMAT_ARGB8888;
@@ -58,25 +74,30 @@ int main(int argc, char **argv)
                 pixelFormat = SDL_PIXELFORMAT_UYVY;
         }
         imageFrame = SDL_CreateTexture(renderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, windowRect.w, windowRect.h);
-
-        camReader->StartStream();
-
+        
+        camReader->StartStream(&NewPixels);
         
         while (!quit) {
-                SDL_RenderClear( renderer );
                 
+                camReader->GetNextFrame();
+                if(newPixels) {
+                        SDL_LockMutex(_camPixelLock);
+                        void* pixels;
+                        int pitch;
+                
+                        if(SDL_LockTexture(imageFrame, NULL, &pixels, &pitch) == 0) {
+                                memcpy(pixels, _camPixel, _camPixelSize);
+                                SDL_UnlockTexture(imageFrame);
+                        }
+                        SDL_UnlockMutex(_camPixelLock);
+                        newPixels = false;
+                        
+                }
                 //Todo Show on screen
                 //auto rw = SDL_RWFromConstMem(buffers[buf.index].start, buf.bytesused);
                 //imageFrame = IMG_LoadTexture_RW(renderer, rw, 0);
-
-                void* pixels;
-                void* camPixel;
-                int pitch;
-                auto size = camReader->GetNextFrame(camPixel);
-                if(SDL_LockTexture(imageFrame, NULL, &pixels, &pitch) == 0) {
-                        memcpy(pixels, camPixel, size);
-                        SDL_UnlockTexture(imageFrame);
-                }
+                //auto size = camReader->GetNextFrame(camPixel);
+                
                 /*sprintf(out_name, "out%03d.ppm", i);
                 fout = fopen(out_name, "w");
                 if (!fout) {
@@ -87,6 +108,8 @@ int main(int argc, char **argv)
                         fmt.fmt.pix.width, fmt.fmt.pix.height);
                 fwrite(buffers[buf.index].start, buf.bytesused, 1, fout);
                 fclose(fout);*/
+
+                SDL_RenderClear( renderer );
                 SDL_RenderCopy(renderer, imageFrame, NULL, NULL);
                 SDL_RenderPresent(renderer);
 

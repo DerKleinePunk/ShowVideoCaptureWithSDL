@@ -1,8 +1,8 @@
 #include "CamReader.h"
 
 struct Framebuffer {
-        void   *start;
-        size_t length;
+    void* start;
+    size_t length;
 };
 
 static int xioctl(int fh, int request, void *arg)
@@ -88,6 +88,16 @@ std::string CamReader::GetPixelFormatText(unsigned int format) {
     }
 }
 
+int CamReader::WorkerMain() {
+    while (!_stopWorker)
+    {
+        if(GetNextFrame() <= 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 CamReader::CamReader(std::string deviceName) {
     _deviceName = deviceName;
     _videoWidth = -1;
@@ -95,7 +105,7 @@ CamReader::CamReader(std::string deviceName) {
     _videoPixelFormat = V4L2_META_FMT_UVC;
 }
 
-int CamReader::Init() {
+int CamReader::Init(int width, int height) {
    
     _deviceHandle = v4l2_open(_deviceName.c_str(), O_RDWR | O_NONBLOCK, 0);
     if (_deviceHandle < 0) {
@@ -107,10 +117,12 @@ int CamReader::Init() {
     CLEAR(fmtdesc);
     fmtdesc.index = 0;
     fmtdesc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    //Todo Check Size ca be used
     while (xioctl(_deviceHandle, VIDIOC_ENUM_FMT, &fmtdesc) >= 0) {
         v4l2_frmsizeenum frmsize;
         CLEAR(frmsize);
-        printf("Pixelformat %s\n",GetPixelFormatText(fmtdesc.pixelformat).c_str()); 
+        printf("Pixelformat %s is supported\n",GetPixelFormatText(fmtdesc.pixelformat).c_str()); 
         frmsize.pixel_format = fmtdesc.pixelformat;
         frmsize.index = 0;
         while (xioctl(_deviceHandle, VIDIOC_ENUM_FRAMESIZES, &frmsize) >= 0) {
@@ -137,21 +149,19 @@ int CamReader::Init() {
     uint32_t wantFormat = V4L2_PIX_FMT_YUYV;
     CLEAR(fmt);
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width = 320;
-    fmt.fmt.pix.height = 240;
-    //fmt.fmt.pix.width = 720;
-    //fmt.fmt.pix.height = 480;
+    fmt.fmt.pix.width = width;
+    fmt.fmt.pix.height = height;
 
     fmt.fmt.pix.pixelformat = wantFormat;
     fmt.fmt.pix.field       = V4L2_FIELD_INTERLACED;
     xioctl(_deviceHandle, VIDIOC_S_FMT, &fmt);
     if (fmt.fmt.pix.pixelformat != wantFormat) {
-        printf("Libv4l didn't V4L2_PIX_FMT_YUYV\n");
+        printf("Libv4l didn't V4L2_PIX_FMT_YUYV support on this device\n");
         fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_UYVY;
         xioctl(_deviceHandle, VIDIOC_S_FMT, &fmt);
         if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_UYVY) {
             //Todo Implement jpeg Frames
-            printf("Libv4l didn't V4L2_PIX_FMT_UYVY\n");
+            printf("Libv4l didn't V4L2_PIX_FMT_UYVY support on this device \n");
             fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_JPEG;
             xioctl(_deviceHandle, VIDIOC_S_FMT, &fmt);
             if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_JPEG) {
@@ -161,8 +171,6 @@ int CamReader::Init() {
             }
         }
     }
-
-    
     
     _videoPixelFormat = fmt.fmt.pix.pixelformat;
     _videoWidth = fmt.fmt.pix.width;
@@ -178,12 +186,25 @@ void CamReader::GetPictureSize(int& width, int& height) {
     height = _videoHeight;
 }
 
-void CamReader::StartStream() {
+void CamReader::StartStream(NewCamImageDelegate callbackNewCamImage) {
+    _callbackNewCamImage = callbackNewCamImage;
+
     _type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    xioctl(_deviceHandle, VIDIOC_STREAMON, &_type);
+    if(xioctl(_deviceHandle, VIDIOC_STREAMON, &_type) == 0) {
+        printf("Stream Started\n");
+        _stopWorker = false;
+        //_worker = std::thread(&CamReader::WorkerMain, this);
+    }
 }
+
 void CamReader::StopStream() {
+    _stopWorker = true;
+
+    if(_worker.joinable()){
+        _worker.join();
+    }
+
     xioctl(_deviceHandle, VIDIOC_STREAMON, &_type);
 }
 
@@ -191,7 +212,7 @@ uint CamReader::GetPixelFormat() const {
     return _videoPixelFormat;
 }   
 
-int CamReader::GetNextFrame(void*& camPixel) {
+int CamReader::GetNextFrame() {
     int result = -1;
     fd_set  fds;
     timeval tv;
@@ -216,10 +237,16 @@ int CamReader::GetNextFrame(void*& camPixel) {
     CLEAR(buf);
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
-    xioctl(_deviceHandle, VIDIOC_DQBUF, &buf);
+    if(xioctl(_deviceHandle, VIDIOC_DQBUF, &buf) == -1) {
+        printf("VIDIOC_DQBUF failed\n");
+        return -1;
+    } 
 
-    camPixel = _buffers[buf.index].start;
-    result = _buffers[buf.index].length;
+    //camPixel = _buffers[buf.index].start;
+    //result = _buffers[buf.index].length;
+    if(_callbackNewCamImage != nullptr) {
+        _callbackNewCamImage(_buffers[buf.index].start, result);
+    }
 
     xioctl(_deviceHandle, VIDIOC_QBUF, &buf);
 

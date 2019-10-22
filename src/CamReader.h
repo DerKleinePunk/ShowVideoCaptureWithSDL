@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string>
 #include <cstring>
+#include <functional>
+#include <thread>
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -23,6 +25,7 @@
 #define MAX_RETTRY_COUNT 250
 
 struct Framebuffer;
+typedef std::function<void(void* camPixels, int size)> NewCamImageDelegate;
 
 class CamReader {
     std::string  _deviceName;
@@ -33,18 +36,23 @@ class CamReader {
     int _bufferCount;
     enum v4l2_buf_type _type;
     uint _videoPixelFormat;
+    NewCamImageDelegate _callbackNewCamImage;
+    std::thread _worker;
+    bool _stopWorker;
     void ReqestAndInitFrameBuffer();
     static std::string GetPixelFormatText(unsigned int format);
+    int WorkerMain();
+
 public:
 	explicit CamReader(std::string deviceName);
 
-    int Init();
+    int Init(int width, int height);
     void GetPictureSize(int& width, int& height);
-    void StartStream();
+    void StartStream(NewCamImageDelegate callbackNewCamImage);
     void StopStream();
     uint GetPixelFormat() const;
-    int GetNextFrame(void*& camPixel);
     void Deinit();
+    int GetNextFrame();
 };  
 
 #endif //SRC_CAMREADER
