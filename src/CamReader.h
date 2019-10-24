@@ -42,7 +42,7 @@ class CamReader {
     void ReqestAndInitFrameBuffer();
     static std::string GetPixelFormatText(unsigned int format);
     int WorkerMain();
-
+    int GetNextFrame();
 public:
 	explicit CamReader(std::string deviceName);
 
@@ -52,7 +52,6 @@ public:
     void StopStream();
     uint GetPixelFormat() const;
     void Deinit();
-    int GetNextFrame();
 };  
 
 #endif //SRC_CAMREADER

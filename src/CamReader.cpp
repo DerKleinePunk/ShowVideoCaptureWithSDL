@@ -95,6 +95,7 @@ int CamReader::WorkerMain() {
             return -1;
         }
     }
+    printf("WorkerMain Stopped\n");
     return 0;
 }
 
@@ -194,7 +195,7 @@ void CamReader::StartStream(NewCamImageDelegate callbackNewCamImage) {
     if(xioctl(_deviceHandle, VIDIOC_STREAMON, &_type) == 0) {
         printf("Stream Started\n");
         _stopWorker = false;
-        //_worker = std::thread(&CamReader::WorkerMain, this);
+        _worker = std::thread(&CamReader::WorkerMain, this);
     }
 }
 
@@ -241,10 +242,10 @@ int CamReader::GetNextFrame() {
         printf("VIDIOC_DQBUF failed\n");
         return -1;
     } 
-
-    //camPixel = _buffers[buf.index].start;
-    //result = _buffers[buf.index].length;
+    
+    result = _buffers[buf.index].length;
     if(_callbackNewCamImage != nullptr) {
+        //printf("send %d buffer to callback\n", buf.index);
         _callbackNewCamImage(_buffers[buf.index].start, result);
     }
 
