@@ -25,7 +25,8 @@
 #define MAX_RETTRY_COUNT 250
 
 struct Framebuffer;
-typedef std::function<void(void* camPixels, int size)> NewCamImageDelegate;
+typedef std::function<void(unsigned char *camPixels, size_t size)> NewCamImageDelegate;
+typedef std::function<int(unsigned char *&camPixelsOut, unsigned char *camPixelsIn, int width, int height, size_t& size)> PixelConverter;
 
 class CamReader {
     std::string  _deviceName;
@@ -37,6 +38,7 @@ class CamReader {
     enum v4l2_buf_type _type;
     uint _videoPixelFormat;
     NewCamImageDelegate _callbackNewCamImage;
+    PixelConverter _pixelConverter;
     std::thread _worker;
     bool _stopWorker;
     void ReqestAndInitFrameBuffer();

@@ -1,7 +1,8 @@
 #include "CamReader.h"
+#include "ImageHelper.h"
 
 struct Framebuffer {
-    void* start;
+    unsigned char* start;
     size_t length;
 };
 
@@ -47,7 +48,7 @@ void CamReader::ReqestAndInitFrameBuffer() {
         xioctl(_deviceHandle, VIDIOC_QUERYBUF, &buf);
 
         _buffers[_bufferCount].length = buf.length;
-        _buffers[_bufferCount].start = v4l2_mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _deviceHandle, buf.m.offset);
+        _buffers[_bufferCount].start = (unsigned char*)v4l2_mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _deviceHandle, buf.m.offset);
 
         if (MAP_FAILED == _buffers[_bufferCount].start) {
                 perror("mmap");
@@ -104,6 +105,7 @@ CamReader::CamReader(std::string deviceName) {
     _videoWidth = -1;
     _videoHeight = -1;
     _videoPixelFormat = V4L2_META_FMT_UVC;
+    _pixelConverter = nullptr;
 }
 
 int CamReader::Init(int width, int height) {
@@ -169,6 +171,8 @@ int CamReader::Init(int width, int height) {
                 printf("Libv4l didn't V4L2_PIX_FMT_JPEG\nNo supportet Format found\n");
 
                 exit(EXIT_FAILURE);
+            } else {
+                _pixelConverter = &mjpegtoyuv420p;
             }
         }
     }
@@ -243,10 +247,17 @@ int CamReader::GetNextFrame() {
         return -1;
     } 
     
-    result = _buffers[buf.index].length;
+    auto size = _buffers[buf.index].length;
     if(_callbackNewCamImage != nullptr) {
         //printf("send %d buffer to callback\n", buf.index);
-        _callbackNewCamImage(_buffers[buf.index].start, result);
+        if(_pixelConverter != nullptr) {
+            unsigned char* buffer = nullptr;
+            _pixelConverter(buffer, _buffers[buf.index].start, _videoWidth, _videoHeight, size);
+            _callbackNewCamImage(buffer, size);
+        } else {
+            _callbackNewCamImage(_buffers[buf.index].start, size);
+        }
+        
     }
 
     xioctl(_deviceHandle, VIDIOC_QBUF, &buf);

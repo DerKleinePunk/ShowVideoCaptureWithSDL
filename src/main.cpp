@@ -12,8 +12,8 @@
 #include <iostream>
 #include "CamReader.h"
 
-//#define MILLESECONDS_PER_FRAME 1000.0/120.0       /* about 120 frames per second */
-#define MILLESECONDS_PER_FRAME 1000.0/60.0       /* about 60 frames per second */
+#define MILLESECONDS_PER_FRAME 1000.0/120.0       /* about 120 frames per second */
+//#define MILLESECONDS_PER_FRAME 1000.0/60.0       /* about 60 frames per second */
 
 bool InitEverything();
 bool InitSDL();
@@ -55,26 +55,27 @@ void NewPixels(void* camPixel, int size) {
 
 int main(int argc, char **argv)
 {
-	FILE                            *fout;
+	FILE *fout;
 	_camPixelLock = SDL_CreateMutex();
 	//Grabber Cam Supports 720x480 NTSC
 	camReader = new CamReader("/dev/video0");
 	auto result = camReader->Init(720, 480);
 	if(result < 0) {
-			exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	camReader->GetPictureSize(windowRect.w, windowRect.h);
 
 	InitEverything();
 
+	//SDL_PIXELFORMAT_YV12 -> PIX_FMT_YUV420P (FFMpeg)  SDL_UpdateYUVTexture
 	//Big Problem the Texture muss have the Same Vormat like Cam not so many
 	//imageFrame = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 240);
-	uint32_t pixelFormat = SDL_PIXELFORMAT_ARGB8888;
+	uint32_t pixelFormat = SDL_PIXELFORMAT_YV12;
 	if(camReader->GetPixelFormat() == V4L2_PIX_FMT_YUYV) {
-			pixelFormat = SDL_PIXELFORMAT_YUY2;
+		pixelFormat = SDL_PIXELFORMAT_YUY2;
 	} else if(camReader->GetPixelFormat() == V4L2_PIX_FMT_UYVY) {
-			pixelFormat = SDL_PIXELFORMAT_UYVY;
+		pixelFormat = SDL_PIXELFORMAT_UYVY;
 	}
 	imageFrame = SDL_CreateTexture(renderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, windowRect.w, windowRect.h);
 
@@ -90,7 +91,7 @@ int main(int argc, char **argv)
 			int pitch;
 
 			if(SDL_LockTexture(imageFrame, NULL, &pixels, &pitch) == 0) {
-				memcpy(pixels, _camPixel, _camPixelSize);
+				memcpy(pixels, _camPixel, pitch * windowRect.h);
 				SDL_UnlockTexture(imageFrame);
 			}
 			SDL_UnlockMutex(_camPixelLock);
