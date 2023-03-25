@@ -17,7 +17,7 @@ echo "reproBuild $reproBuild"
 INFO "reproBuild $reproBuild"
 
 if [ "$reproBuild" = "false" ] ; then
-	wget -O DebianPackages.txt https://raw.githubusercontent.com/DerKleinePunk/carnine/master/DebianPackages.txt
+	wget -O DebianPackages.txt https://raw.githubusercontent.com/DerKleinePunk/ShowVideoCaptureWithSDL/master/DebianPackages.txt
 	exitCode=$?
 	if [ $exitCode -ne 0 ] ; then
 		echo "wget give an error"
@@ -38,6 +38,15 @@ InstallPackage(){
 		sudo apt-get --yes install $packageName
 	fi
 }
+
+InstallPackage git
+InstallPackage git-lfs
+
+DEPENSFILE="DebianPackages.txt"
+
+while read LINE; do
+     InstallPackage $LINE
+done < $DEPENSFILE
 
 InstallSDLComponent(){
 	packageName="$1"
