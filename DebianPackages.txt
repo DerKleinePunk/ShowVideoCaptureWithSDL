@@ -17,3 +17,4 @@ libsystemd-dev
 libv4l-dev
 libjpeg-dev
 libuvc0
+libgles2-mesa-dev

@@ -68,6 +68,8 @@ int main(int argc, char** argv)
 
     camReader->GetPictureSize(windowRect.w, windowRect.h);
 
+	std::cout << "Video Size " << windowRect.w << "x" << windowRect.h << std::endl;
+
     if(!InitEverything()) {
 		std::cout << "Failed to start SDL2" << std::endl;
 	}
@@ -82,9 +84,10 @@ int main(int argc, char** argv)
     } else if(camReader->GetPixelFormat() == V4L2_PIX_FMT_UYVY) {
         pixelFormat = SDL_PIXELFORMAT_UYVY;
     }
-	
+
     imageFrame = SDL_CreateTexture(renderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, windowRect.w, windowRect.h);
 
+	std::cout << "next StartStream" << std::endl;
     camReader->StartStream(&NewPixels);
 
     auto delay = static_cast<int>(MILLESECONDS_PER_FRAME);
