@@ -26,7 +26,7 @@ void RunGame();
 void HandleInput();
 void Render();
 
-SDL_Rect windowRect = { 100, 100, 320, 240 };
+SDL_Rect windowRect = { 100, 100, 1024, 600 };
 
 SDL_Window* window;
 SDL_Renderer* renderer;
@@ -68,7 +68,10 @@ int main(int argc, char** argv)
 
     camReader->GetPictureSize(windowRect.w, windowRect.h);
 
-    InitEverything();
+    if(!InitEverything()) {
+		std::cout << "Failed to start SDL2" << std::endl;
+	}
+
 
     // SDL_PIXELFORMAT_YV12 -> PIX_FMT_YUV420P (FFMpeg)  SDL_UpdateYUVTexture
     // Big Problem the Texture muss have the Same Vormat like Cam not so many
@@ -79,8 +82,8 @@ int main(int argc, char** argv)
     } else if(camReader->GetPixelFormat() == V4L2_PIX_FMT_UYVY) {
         pixelFormat = SDL_PIXELFORMAT_UYVY;
     }
-    imageFrame =
-    SDL_CreateTexture(renderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, windowRect.w, windowRect.h);
+	
+    imageFrame = SDL_CreateTexture(renderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, windowRect.w, windowRect.h);
 
     camReader->StartStream(&NewPixels);
 
@@ -122,7 +125,24 @@ int main(int argc, char** argv)
 
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
-            if(event.type == SDL_QUIT) quit = true;
+            switch(event.type) {
+				case SDL_QUIT:
+					quit = true;
+					break;
+				case SDL_KEYDOWN: {
+					const Uint8* state = SDL_GetKeyboardState(nullptr);
+					switch(event.key.keysym.sym) {
+						case SDLK_ESCAPE:
+							quit = true;
+							break;
+						case SDLK_q:
+							if(state[SDL_SCANCODE_LCTRL] || state[SDL_SCANCODE_RCTRL]) {
+								quit = true;
+							}
+							break;
+					}
+				}
+            }
         }
 
         const auto endFrame = SDL_GetTicks();

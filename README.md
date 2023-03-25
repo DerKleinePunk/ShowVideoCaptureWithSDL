@@ -11,3 +11,10 @@ wget -O build.sh https://raw.githubusercontent.com/DerKleinePunk/ShowVideoCaptur
 chmod +x build.sh
 ./build.sh
 ```
+
+## V4L
+
+v4l2-ctl -d /dev/video0 --list-ctrls
+Check Video Device
+
+v4l2-ctl --list-device
