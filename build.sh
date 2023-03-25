@@ -173,3 +173,5 @@ if [ $exitCode -ne 0 ] ; then
 	exit $exitCode
 fi
 cd ..
+
+echo to run call ./bin/Linux/VideoCamSDL2
